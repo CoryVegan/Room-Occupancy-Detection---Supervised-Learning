@@ -1,0 +1,144 @@
+---
+title: "Team14_Project_Perceptron"
+author: "Prajwal Gonnade; Supreet Nayak"
+date: "December 9, 2016"
+output: word_document
+---
+
+#Clear workspace
+```{r clr-wksp}
+rm(list = ls())
+```
+
+```{r load-packages, message=FALSE}
+library(boot)
+library(caret)
+library(class)
+library(ROCR)
+library(MASS)
+library(tree)
+library(randomForest)
+library(chemometrics)
+library(reshape2)
+```
+
+
+#Load CSV
+```{r load-csv}
+#Select datatraining.txt
+Occupancy_Train <- read.csv(file.choose(),header=T)
+
+#Select datatest.txt
+Occupancy_Test1 <- read.csv(file.choose(),header=T)
+
+#Select datatest2.txt
+Occupancy_Test2 <- read.csv(file.choose(),header=T)
+```
+
+```{r data-plots}
+Occupancy_Train$Occupancy <- as.factor(Occupancy_Train$Occupancy)
+ggplot(Occupancy_Train, aes(x = Temperature, y = Light)) + 
+     geom_point(aes(colour=Occupancy, shape=Occupancy), size = 3) +
+     xlab("Temperature") + 
+     ylab("Light") + 
+     ggtitle("Occupancy vs Temperature and Light")
+
+ggplot(Occupancy_Train, aes(x = Temperature, y = CO2)) + 
+     geom_point(aes(colour=Occupancy, shape=Occupancy), size = 3) +
+     xlab("Temperature") + 
+     ylab("Light") + 
+     ggtitle("Occupancy vs Temperature and CO2")
+
+ggplot(Occupancy_Train, aes(x = Temperature, y = HumidityRatio)) + 
+     geom_point(aes(colour=Occupancy, shape=Occupancy), size = 3) +
+     xlab("Temperature") + 
+     ylab("Light") + 
+     ggtitle("Occupancy vs Temperature and HumidityRatio")
+
+ggplot(Occupancy_Train, aes(x = Light, y = CO2)) + 
+     geom_point(aes(colour=Occupancy, shape=Occupancy), size = 3) +
+     xlab("Temperature") + 
+     ylab("Light") + 
+     ggtitle("Occupancy vs Light and CO2")
+
+ggplot(Occupancy_Train, aes(x = Light, y = HumidityRatio)) + 
+     geom_point(aes(colour=Occupancy, shape=Occupancy), size = 3) +
+     xlab("Temperature") + 
+     ylab("Light") + 
+     ggtitle("Occupancy vs Light and HumidityRatio")
+
+ggplot(Occupancy_Train, aes(x = CO2, y = HumidityRatio)) + 
+     geom_point(aes(colour=Occupancy, shape=Occupancy), size = 3) +
+     xlab("Temperature") + 
+     ylab("Light") + 
+     ggtitle("Occupancy vs CO2 and HumidityRatio")
+#Occupancy_Train$Occupancy <- as.integer(Occupancy_Train$Occupancy)
+```
+#Perceptron
+```{r perceptron}
+Occupancy_subset <- Occupancy_Train[,c(2,4,5,6,7)]
+Occupancy_response <- Occupancy_Test2[,7]
+feature_plot <- function (Occupancy_subset, Occupancy_response) {
+  mtmelt <<- melt(Occupancy_subset, id.vars = Occupancy_response)
+  p <- ggplot(mtmelt, aes(x = value, y = mtmelt[, 5])) +
+    facet_wrap(~variable, scales = "free") +
+    geom_point() +
+    labs(y = Occupancy_response)
+  p
+}
+
+feature_plot(Occupancy_subset, Occupancy_response)
+
+
+Occupancy_subset[, 6] <- 1
+Occupancy_subset[Occupancy_subset[, 5] == 0, 6] <- -1
+x <- Occupancy_subset[, c(1,2,3,4)]
+y <- Occupancy_subset[, 6]
+head(x)
+head(y)
+perceptron <- function(x, y, eta, niter) {
+
+        # initialize weight vector
+        weight <- rep(0, dim(x)[2] + 1)
+        errors <- rep(0, niter)
+
+
+        # loop over number of epochs niter
+        for (jj in 1:niter) {
+
+                # loop through training data set
+                for (ii in 1:length(y)) {
+
+                        # Predict binary label using Heaviside activation
+                        # function
+                        z <- sum(weight[2:length(weight)] *
+                                         as.numeric(x[ii, ])) + weight[1]
+                        if(z < 0) {
+                                ypred <- -1
+                        } else {
+                                ypred <- 1
+                        }
+
+                        # Change weight - the formula doesn't do anything
+                        # if the predicted value is correct
+                        weightdiff <- eta * (y[ii] - ypred) *
+                                c(1, as.numeric(x[ii, ]))
+                        weight <- weight + weightdiff
+
+                        # Update error function
+                        if ((y[ii] - ypred) != 0.0) {
+                                errors[jj] <- errors[jj] + 1
+                        }
+
+                }
+        }
+
+        # weight to decide between the two species
+        print(weight)
+        return(errors)
+}
+
+err <- perceptron(x, y, 0.1, 5)
+plot(0.1:5, err, type="l", lwd=2, col="red", xlab="epoch #", ylab="errors")
+title("Errors vs epoch - learning rate eta = 0.1")
+```

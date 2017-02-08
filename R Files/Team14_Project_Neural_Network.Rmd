@@ -1,0 +1,62 @@
+---
+title: "Team14_Project_Neural_Network"
+author: "Prajwal Gonnade; Supreet Nayak"
+date: "December 9, 2016"
+output: word_document
+---
+
+#Clear workspace
+```{r clr-wksp}
+rm(list = ls())
+```
+
+```{r load-packages, message=FALSE}
+library(boot)
+library(caret)
+library(class)
+library(ROCR)
+library(MASS)
+library(tree)
+library(randomForest)
+library(chemometrics)
+library(reshape2)
+```
+
+#Neural Network
+#Load CSV
+```{r load-csv}
+#Select datatraining.txt
+Occupancy_Train <- read.csv(file.choose(),header=T)
+
+#Select datatest.txt
+Occupancy_Test1 <- read.csv(file.choose(),header=T)
+
+#Select datatest2.txt
+Occupancy_Test2 <- read.csv(file.choose(),header=T)
+```
+```{r ann}
+library(neuralnet)
+nn <- neuralnet(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data=Occupancy_Train,hidden=2,threshold = 0.01, linear.output=FALSE)
+plot(nn, rep = "best")
+```
+
+```{r predict-ann-1}
+pr.nn1 <- compute(nn,Occupancy_Test1[,c(2,4,5,6)])
+
+results1 <- data.frame(actual = Occupancy_Test1$Occupancy, prediction = pr.nn1$net.result)
+
+table(round(pr.nn1$net.result),Occupancy_Test1$Occupancy)
+mean(round(pr.nn1$net.result) != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, round(pr.nn1$net.result))
+```
+
+```{r predict-ann-2}
+pr.nn2 <- compute(nn,Occupancy_Test2[,c(2,4,5,6)])
+
+results2 <- data.frame(actual = Occupancy_Test2$Occupancy, prediction = pr.nn2$net.result)
+
+table(round(pr.nn2$net.result),Occupancy_Test2$Occupancy)
+mean(round(pr.nn2$net.result) != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, round(pr.nn2$net.result))
+```
+

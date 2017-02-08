@@ -1,0 +1,780 @@
+---
+title: "Team14_Project_Occupancy_Detection"
+author: "Prajwal Gonnade, Supreet Nayak"
+date: "December 5, 2016"
+output: word_document
+---
+
+#GLM/LDA/QDA/CART/KNN/Random Forest
+#Clear workspace
+```{r clr-wksp}
+rm(list = ls())
+```
+
+```{r load-packages, message=FALSE}
+library(boot)
+library(caret)
+library(class)
+library(ROCR)
+library(MASS)
+library(tree)
+library(randomForest)
+library(chemometrics)
+library(reshape2)
+```
+
+#Load CSV
+```{r load-csv}
+#Select datatraining.txt
+Occupancy_Train <- read.csv(file.choose(),header=T)
+
+#Select datatest.txt
+Occupancy_Test1 <- read.csv(file.choose(),header=T)
+
+#Select datatest2.txt
+Occupancy_Test2 <- read.csv(file.choose(),header=T)
+```
+
+
+#Analyzing Data
+```{r analyzing-data}
+names(Occupancy_Train)
+str(Occupancy_Train)
+summary(Occupancy_Train)
+boxplot(Occupancy_Train[,-1],las=2)
+cor(Occupancy_Train[,-1])
+```
+
+#Logistic Regression
+
+glm(Occupancy ~ Temperature + Humidity + Light + CO2 + HumidityRatio, data = Occupancy_Train, family = "binomial")
+
+```{r Initial-Model}
+Occupancy_glm <- glm(Occupancy ~ Temperature + Humidity + Light + CO2 + HumidityRatio, data = Occupancy_Train, family = "binomial")
+summary(Occupancy_glm)
+```
+
+#Explanation -
+
+#Removing insignificant predictors
+```{r remove-insig-preds}
+summary(glm(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, family = "binomial"))
+```
+
+
+###Final Model -
+```{r final-model}
+Occupancy_glm <- glm(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, family = "binomial")
+```
+
+#Confusion Matrix on Testing Data - 1
+```{r confusion-matrix-glm-testdata-1}
+glm_probs_1 = predict(Occupancy_glm, Occupancy_Test1, type = "response")
+glm_pred_y_1 = rep(0, length(Occupancy_Test1$Occupancy))
+glm_pred_y_1[glm_probs_1 > 0.5] = 1
+table(glm_pred_y_1, Occupancy_Test1$Occupancy)
+mean(glm_pred_y_1 != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, glm_pred_y_1)
+Test_MSE <- sum((glm_pred_y_1 - as.numeric(Occupancy_Test1$Occupancy))^2)/nrow(Occupancy_Test1)
+Test_MSE
+```
+
+
+#ROC Analysis GLM - 1
+```{r roc-analysis-glm-1}
+roc.curve=function(s,print=FALSE){
+Ps=(glm_probs_1>s)*1
+FP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 0))/sum(Occupancy_Test1$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 1))/sum(Occupancy_Test1$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test1$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,], xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve GLM-1', col="green",lwd=2,type="l")
+```
+
+#Confusion Matrix on Testing Data - 2
+```{r confusion-matrix-glm-testdata-2}
+glm_probs_1 = predict(Occupancy_glm, Occupancy_Test2, type = "response")
+glm_pred_y_1 = rep(0, length(Occupancy_Test2$Occupancy))
+glm_pred_y_1[glm_probs_1 > 0.5] = 1
+table(glm_pred_y_1, Occupancy_Test2$Occupancy)
+mean(glm_pred_y_1 != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, glm_pred_y_1)
+```
+
+
+#ROC Analysis GLM - 2
+```{r roc-analysis-glm-2}
+roc.curve=function(s,print=FALSE){
+Ps=(glm_probs_1>s)*1
+FP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 0))/sum(Occupancy_Test2$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 1))/sum(Occupancy_Test2$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test2$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,], xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve GLM-2', col="green",lwd=2,type="l")
+```
+
+#LDA - Testing Data 1
+```{r lda-1}
+Occupancy_lda <- lda(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+Occupancy_lda
+lda_pred = predict(Occupancy_lda, Occupancy_Test1)
+names(lda_pred)
+table(lda_pred$class, Occupancy_Test1$Occupancy)
+mean(lda_pred$class != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy,lda_pred$class)
+```
+
+#ROC Analysis LDA - Testing Data 1
+```{r roc-analysis-lda-1}
+S = lda_pred$posterior[,2]
+roc.curve=function(s,print=FALSE){
+Ps=(S>s)*1
+FP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 0))/sum(Occupancy_Test1$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 1))/sum(Occupancy_Test1$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test1$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve LDA-1', col="green",lwd=2,type="l")
+```
+
+#LDA - Testing Data 2
+```{r lda-2}
+Occupancy_lda <- lda(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+Occupancy_lda
+lda_pred = predict(Occupancy_lda, Occupancy_Test2)
+names(lda_pred)
+table(lda_pred$class, Occupancy_Test2$Occupancy)
+mean(lda_pred$class != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy,lda_pred$class)
+```
+
+#ROC Analysis LDA - Testing Data 2
+```{r roc-analysis-lda-2}
+S = lda_pred$posterior[,2]
+roc.curve=function(s,print=FALSE){
+Ps=(S>s)*1
+FP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 0))/sum(Occupancy_Test2$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 1))/sum(Occupancy_Test2$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test2$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve LDA-2', col="green",lwd=2,type="l")
+```
+
+
+#Cross Validation LDA
+```{r k-fold-lda}
+inds=sample(1:nrow(Occupancy_Train),0.9*nrow(Occupancy_Train))
+df.train=Occupancy_Train[inds,]
+df.test=Occupancy_Train[-inds,]
+train.model = lda(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+preds=predict(train.model, df.test)
+```
+
+#ROC Analysis LDA - CV
+```{r roc-analysis-lda-cv}
+S = preds$posterior[,2]
+roc.curve=function(s,print=FALSE){
+Ps=(S>s)*1
+FP=sum((Ps==1)*(df.test$Occupancy == 0))/sum(df.test$Occupancy == 0)
+TP=sum((Ps==1)*(df.test$Occupancy == 1))/sum(df.test$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=df.test$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve LDA-CV', col="green",lwd=2,type="l")
+```
+
+
+#QDA - Testing Data 1
+```{r qda-1}
+Occupancy_qda <- qda(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+Occupancy_qda
+qda.pred <- predict(Occupancy_qda, Occupancy_Test1)
+table(qda.pred$class, Occupancy_Test1$Occupancy)
+mean(qda.pred$class != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy,qda.pred$class)
+```
+
+#ROC Analysis QDA - Testing Data 1
+```{r roc-analysis-qda-1}
+S = qda.pred$posterior[,2]
+roc.curve=function(s,print=FALSE){
+Ps=(S > s)*1
+FP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 0))/sum(Occupancy_Test1$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 1))/sum(Occupancy_Test1$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test1$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve QDA-1', col="green",lwd=2,type="l")
+```
+
+#QDA - Testing Data 2
+```{r qda-2}
+Occupancy_qda <- qda(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+Occupancy_qda
+qda.pred <- predict(Occupancy_qda, Occupancy_Test2)
+table(qda.pred$class, Occupancy_Test2$Occupancy)
+mean(qda.pred$class != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy,qda.pred$class)
+```
+
+#ROC Analysis QDA - Testing Data 2
+```{r roc-analysis-qda-2}
+S = qda.pred$posterior[,2]
+roc.curve=function(s,print=FALSE){
+Ps=(S > s)*1
+FP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 0))/sum(Occupancy_Test2$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 1))/sum(Occupancy_Test2$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test2$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve QDA-2', col="green",lwd=2,type="l")
+```
+
+#Cross Validation QDA - 10 Fold
+```{r k-fold-qda}
+inds=sample(1:nrow(Occupancy_Train),0.9*nrow(Occupancy_Train))
+df.train=Occupancy_Train[inds,]
+df.test=Occupancy_Train[-inds,]
+train.model = qda(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+preds=predict(train.model, df.test)
+```
+
+#ROC Analysis QDA - CV
+```{r roc-analysis-qda-cv}
+S = preds$posterior[,2]
+roc.curve=function(s,print=FALSE){
+Ps=(S>s)*1
+FP=sum((Ps==1)*(df.test$Occupancy == 0))/sum(df.test$Occupancy == 0)
+TP=sum((Ps==1)*(df.test$Occupancy == 1))/sum(df.test$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=df.test$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve QDA-CV', col="green",lwd=2,type="l")
+```
+
+
+#CART - Testing Data 1
+```{r cart-1}
+set.seed(2)
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+str(Occupancy_Train)
+tree.Occupancy_Train <- tree(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+plot(tree.Occupancy_Train)
+summary(tree.Occupancy_Train)
+text(tree.Occupancy_Train, pretty = 0)
+tree.pred <- predict(tree.Occupancy_Train, Occupancy_Test1, type = "class")
+table(tree.pred, Occupancy_Test1$Occupancy)
+mean(tree.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, tree.pred)
+```
+
+#Cross Validation and Pruning - Testing Data 1
+```{r prune-1}
+set.seed(3)
+cv.Occupancy_Train <- cv.tree(tree.Occupancy_Train, FUN=prune.misclass)
+names(cv.Occupancy_Train)
+cv.Occupancy_Train
+par(mfrow = c(1,2))
+plot(cv.Occupancy_Train$size, cv.Occupancy_Train$dev, type = "b")
+plot(cv.Occupancy_Train$k, cv.Occupancy_Train$dev, type = "b")
+prune.Occupancy_Train = prune.misclass(tree.Occupancy_Train, best = 9)
+#prune.mt2Data_Train = prune.misclass(tree.mt2Data_Train)
+plot(prune.Occupancy_Train)
+text(prune.Occupancy_Train, pretty = 0)
+tree.pred = predict(prune.Occupancy_Train, Occupancy_Test1, type = "class")
+#tree.pred = predict(prune.mt2Data_Train, mt2Data_Test)
+table(tree.pred, Occupancy_Test1$Occupancy)
+mean(tree.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, tree.pred)
+```
+
+#ROC Analysis Decision Trees - Testing Data 1
+```{r roc-analysis-trees-1}
+tree.pred = predict(prune.Occupancy_Train, Occupancy_Test1, type = "vector")
+#tree.prob <- attr(tree.pred, "vector") 
+roc.curve=function(s,print=FALSE){
+Ps=(tree.pred[,2]>s)*1
+FP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 0))/sum(Occupancy_Test1$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 1))/sum(Occupancy_Test1$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test1$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)', main = 'ROC Curve Decision Tree-1', col="green",lwd=2,type="l")
+```
+
+
+#CART - Testing Data 2
+```{r cart-2}
+set.seed(2)
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+str(Occupancy_Train)
+tree.Occupancy_Train <- tree(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train)
+plot(tree.Occupancy_Train)
+summary(tree.Occupancy_Train)
+text(tree.Occupancy_Train, pretty = 0)
+tree.pred <- predict(tree.Occupancy_Train, Occupancy_Test2, type = "class")
+table(tree.pred, Occupancy_Test2$Occupancy)
+mean(tree.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, tree.pred)
+```
+
+#Cross Validation and Pruning - Testing Data 2
+```{r prune-2}
+set.seed(3)
+cv.Occupancy_Train <- cv.tree(tree.Occupancy_Train, FUN=prune.misclass)
+names(cv.Occupancy_Train)
+cv.Occupancy_Train
+par(mfrow = c(1,2))
+plot(cv.Occupancy_Train$size, cv.Occupancy_Train$dev, type = "b")
+plot(cv.Occupancy_Train$k, cv.Occupancy_Train$dev, type = "b")
+prune.Occupancy_Train = prune.misclass(tree.Occupancy_Train, best = 9)
+#prune.mt2Data_Train = prune.misclass(tree.mt2Data_Train)
+plot(prune.Occupancy_Train)
+text(prune.Occupancy_Train, pretty = 0)
+tree.pred = predict(prune.Occupancy_Train, Occupancy_Test2, type = "class")
+#tree.pred = predict(prune.mt2Data_Train, mt2Data_Test)
+table(tree.pred, Occupancy_Test2$Occupancy)
+mean(tree.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, tree.pred)
+```
+
+#ROC Analysis Decision Trees - Testing Data 2
+```{r roc-analysis-trees-2}
+tree.pred = predict(prune.Occupancy_Train, Occupancy_Test2, type = "vector")
+#tree.prob <- attr(tree.pred, "vector") 
+roc.curve=function(s,print=FALSE){
+Ps=(tree.pred[,2]>s)*1
+FP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 0))/sum(Occupancy_Test2$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 1))/sum(Occupancy_Test2$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test2$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)', main = 'ROC Curve Decision Tree-2', col="green",lwd=2,type="l")
+```
+
+###KNN Testing Data 1 
+#KNN k = 1
+```{r knn-k-1-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 1, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+#KNN k = 3
+```{r knn-k-3-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 3, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+
+#KNN k = 5
+```{r knn-k-5-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 5, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+#KNN k = 10
+```{r knn-k-10-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 10, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+#KNN k = 25
+```{r knn-k-25-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 25, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+#KNN k = 50
+```{r knn-k-50-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 50, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+#KNN k = 100
+```{r knn-k-100-1}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test1$Occupancy <- factor(Occupancy_Test1$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test1))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 100, prob = TRUE)
+table(knn.pred, Occupancy_Test1$Occupancy)
+mean(knn.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, knn.pred)
+```
+
+###KNN Testing Data 2
+#KNN k = 1
+```{r knn-k-1-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 1, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+#KNN k = 3
+```{r knn-k-3-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 3, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+
+#KNN k = 5
+```{r knn-k-5-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 5, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+#KNN k = 10
+```{r knn-k-10-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 10, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+#KNN k = 25
+```{r knn-k-25-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 25, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+#KNN k = 50
+```{r knn-k-50-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 50, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+#KNN k = 100
+```{r knn-k-100-2}
+Occupancy_Train$Occupancy <- factor(Occupancy_Train$Occupancy)
+Occupancy_Test2$Occupancy <- factor(Occupancy_Test2$Occupancy)
+attach(Occupancy_Train)
+test.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Test2))]
+train.X = cbind(Temperature, Light, CO2, HumidityRatio)[as.numeric(rownames(Occupancy_Train))]
+Occupancy_Train.Occupancy = Occupancy[1:nrow(Occupancy_Train)]
+set.seed(1)
+knn.pred = knn(data.frame(train.X), data.frame(test.X), Occupancy_Train.Occupancy, k = 100, prob = TRUE)
+table(knn.pred, Occupancy_Test2$Occupancy)
+mean(knn.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, knn.pred)
+```
+
+#Random Forest Bag - Testing Data 1
+```{r random-forest-bag-1}
+set.seed(123)
+bag.Occupancy_Train = randomForest(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, mtry = 4, importance = TRUE)
+bag.Occupancy_Train
+yhat.bag = predict(bag.Occupancy_Train, Occupancy_Test1)
+plot(yhat.bag, Occupancy_Test1$Occupancy)
+abline(0,1)
+mean((as.numeric(yhat.bag) - as.numeric(Occupancy_Test1$Occupancy)) ^ 2)
+```
+
+#Random Forest Ntree
+```{r random-forest-ntree-1}
+set.seed(123)
+bag.Occupancy_Train = randomForest(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, mtry = 4, ntree = 15)
+bag.Occupancy_Train
+yhat.bag = predict(bag.Occupancy_Train, Occupancy_Test1)
+plot(yhat.bag, Occupancy_Test1$Occupancy)
+abline(0,1)
+mean((as.numeric(yhat.bag) - as.numeric(Occupancy_Test1$Occupancy)) ^ 2)
+```
+
+#Random Forest
+```{r random-forest-1}
+set.seed(123)
+rf.Occupancy_Train = randomForest(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, mtry = 4, importance = TRUE)
+rf.Occupancy_Train
+yhat.rf = predict(bag.Occupancy_Train, Occupancy_Test1)
+plot(yhat.rf, Occupancy_Test1$Occupancy)
+abline(0,1)
+mean((as.numeric(yhat.rf) - as.numeric(Occupancy_Test1$Occupancy)) ^ 2)
+importance(rf.Occupancy_Train)
+varImpPlot(rf.Occupancy_Train)
+```
+
+#Random Forst Confusion Matrix
+```{r rf-confusion-matrix-1}
+rf.pred <- predict(rf.Occupancy_Train, Occupancy_Test1, type = "class")
+table(rf.pred, Occupancy_Test1$Occupancy)
+mean(rf.pred != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, rf.pred)
+```
+
+#ROC Analysis Random Forest
+```{r roc-analysis-rf-1}
+rf.pred = predict(rf.Occupancy_Train, Occupancy_Test1, type = "prob")
+#tree.prob <- attr(tree.pred, "vector") 
+roc.curve=function(s,print=FALSE){
+Ps=(rf.pred[,2]>s)*1
+FP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 0))/sum(Occupancy_Test1$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 1))/sum(Occupancy_Test1$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test1$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)', main = 'ROC Curve Random Forest-1', col="green",lwd=2,type="l")
+```
+
+#Random Forest Bag - Testing Data 2
+```{r random-forest-bag-2}
+set.seed(123)
+bag.Occupancy_Train = randomForest(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, mtry = 4, importance = TRUE)
+bag.Occupancy_Train
+yhat.bag = predict(bag.Occupancy_Train, Occupancy_Test2)
+plot(yhat.bag, Occupancy_Test2$Occupancy)
+abline(0,1)
+mean((as.numeric(yhat.bag) - as.numeric(Occupancy_Test2$Occupancy)) ^ 2)
+```
+
+#Random Forest Ntree
+```{r random-forest-ntree-2}
+set.seed(123)
+bag.Occupancy_Train = randomForest(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, mtry = 4, ntree = 15)
+bag.Occupancy_Train
+yhat.bag = predict(bag.Occupancy_Train, Occupancy_Test2)
+plot(yhat.bag, Occupancy_Test2$Occupancy)
+abline(0,1)
+mean((as.numeric(yhat.bag) - as.numeric(Occupancy_Test2$Occupancy)) ^ 2)
+```
+
+#Random Forest
+```{r random-forest-2}
+set.seed(123)
+rf.Occupancy_Train = randomForest(Occupancy ~ Temperature + Light + CO2 + HumidityRatio, data = Occupancy_Train, mtry = 4, importance = TRUE)
+rf.Occupancy_Train
+yhat.rf = predict(bag.Occupancy_Train, Occupancy_Test2)
+plot(yhat.rf, Occupancy_Test2$Occupancy)
+abline(0,1)
+mean((as.numeric(yhat.rf) - as.numeric(Occupancy_Test2$Occupancy)) ^ 2)
+importance(rf.Occupancy_Train)
+varImpPlot(rf.Occupancy_Train)
+```
+
+#Random Forst Confusion Matrix
+```{r rf-confusion-matrix-2}
+rf.pred <- predict(rf.Occupancy_Train, Occupancy_Test2, type = "class")
+table(rf.pred, Occupancy_Test2$Occupancy)
+mean(rf.pred != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, rf.pred)
+```
+
+#ROC Analysis Random Forest
+```{r roc-analysis-rf-2}
+rf.pred = predict(rf.Occupancy_Train, Occupancy_Test2, type = "prob")
+#tree.prob <- attr(tree.pred, "vector") 
+roc.curve=function(s,print=FALSE){
+Ps=(rf.pred[,2]>s)*1
+FP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 0))/sum(Occupancy_Test2$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 1))/sum(Occupancy_Test2$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test2$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,],xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)', main = 'ROC Curve Random Forest-2', col="green",lwd=2,type="l")
+```

@@ -1,0 +1,93 @@
+---
+title: "Team14_Project_Perceptron"
+author: "Prajwal Gonnade; Supreet Nayak"
+date: "December 9, 2016"
+output: word_document
+---
+  
+#Clear workspace
+```{r clr-wksp}
+rm(list = ls())
+```
+
+```{r load-packages, message=FALSE}
+library(boot)
+library(caret)
+library(class)
+library(ROCR)
+library(MASS)
+library(monmlp)
+```
+
+
+#Load CSV
+```{r load-csv}
+#Select datatraining.txt
+Occupancy_Train <- read.csv(file.choose(),header=T)
+
+#Select datatest.txt
+Occupancy_Test1 <- read.csv(file.choose(),header=T)
+
+#Select datatest2.txt
+Occupancy_Test2 <- read.csv(file.choose(),header=T)
+Occupancy_subset <- Occupancy_Train[,c(2,4,5,6)]
+Occupancy_subset <- data.matrix(Occupancy_subset)
+Occupancy_response <- Occupancy_Train[,7]
+Occupancy_response <- data.matrix(Occupancy_response)
+```
+
+#Perceptron
+```{r perceptron}
+# Fit the model and compute the predictions
+Occupancy.monmlp <- monmlp.fit(Occupancy_subset, Occupancy_response, hidden1=3, n.ensemble=15, monotone=1, bag=TRUE)
+
+```
+
+```{r monmlp-test1}
+monmlp.test1 <- monmlp.predict(x = data.matrix(Occupancy_Test1[,c(2,4,5,6)]), weights = Occupancy.monmlp)
+mean(round(monmlp.test1) != Occupancy_Test1$Occupancy)
+confusionMatrix(Occupancy_Test1$Occupancy, round(monmlp.test1))
+
+# Compute the AUC
+roc.curve=function(s,print=FALSE){
+Ps=(monmlp.test1>s)*1
+FP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 0))/sum(Occupancy_Test1$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test1$Occupancy == 1))/sum(Occupancy_Test1$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test1$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,], xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve MONMLP-1', col="green",lwd=2,type="l")
+```
+
+
+```{r monmlp-test2}
+monmlp.test2 <- monmlp.predict(x = data.matrix(Occupancy_Test2[,c(2,4,5,6)]), weights = Occupancy.monmlp)
+mean(round(monmlp.test2) != Occupancy_Test2$Occupancy)
+confusionMatrix(Occupancy_Test2$Occupancy, round(monmlp.test2))
+
+# Compute the AUC
+roc.curve=function(s,print=FALSE){
+Ps=(monmlp.test2>s)*1
+FP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 0))/sum(Occupancy_Test2$Occupancy == 0)
+TP=sum((Ps==1)*(Occupancy_Test2$Occupancy == 1))/sum(Occupancy_Test2$Occupancy == 1)
+if(print==TRUE){
+print(table(Observed=Occupancy_Test2$Occupancy,Predicted=Ps))
+}
+vect=c(FP,TP)
+names(vect)=c("FPR","TPR")
+return(vect)
+}
+threshold = 0.5
+roc.curve(threshold,print=TRUE)
+ROC.curve=Vectorize(roc.curve)
+M.ROC=ROC.curve(seq(0,1,by=.01))
+plot(M.ROC[1,],M.ROC[2,], xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)',main = 'ROC Curve MONMLP-2', col="green",lwd=2,type="l")
+```

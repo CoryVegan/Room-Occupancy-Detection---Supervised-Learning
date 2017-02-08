@@ -1,0 +1,67 @@
+---
+title: "Team14_Project_SVM"
+author: "Prajwal Gonnade; Supreet Nayak"
+date: "December 9, 2016"
+output: word_document
+---
+
+#Clear workspace
+```{r clr-wksp}
+rm(list = ls())
+```
+
+```{r load-packages, message=FALSE}
+library(boot)
+library(caret)
+library(class)
+library(ROCR)
+library(e1071)
+```
+
+#Load CSV
+```{r load-csv}
+#Select datatraining.txt
+Occupancy_Train <- read.csv(file.choose(),header=T)
+
+#Select datatest.txt
+Occupancy_Test1 <- read.csv(file.choose(),header=T)
+
+#Select datatest2.txt
+Occupancy_Test2 <- read.csv(file.choose(),header=T)
+```
+
+```{r SVM-1}
+Occupancy_subset=data.frame(x=Occupancy_Train[,c(2,4,5,6)], y=as.factor(Occupancy_Train[,7]))
+Occupancy.svm=svm(y~., data=Occupancy_subset, kernel="linear",cost=10)
+summary(Occupancy.svm)
+table(Occupancy.svm$fitted, Occupancy_subset$y)
+Occupancy_subset.te=data.frame(x=Occupancy_Test1[,c(2,4,5,6)], y=as.factor(Occupancy_Test1[,7]))
+pred.te=predict(Occupancy.svm, newdata=Occupancy_subset.te,decision.values=TRUE)
+Occupancy.svm.probs<-attr(pred.te,"decision.values")
+table(pred.te, Occupancy_subset.te$y)
+Occupancy.svm.confusion <- confusionMatrix(Occupancy_subset.te$y, pred.te)
+Occupancy.svm.confusion
+Occupancy.svm.accuracy <- mean(pred.te == Occupancy_subset.te$y)
+Occupancy.svm.accuracy
+mean(pred.te != Occupancy_subset.te$y)
+Occupancy.svm.prediction<-prediction(Occupancy.svm.probs,Occupancy_subset.te$y)
+Occupancy.svm.performance<-performance(Occupancy.svm.prediction,"tpr","fpr")
+Occupancy.svm.auc<-performance(Occupancy.svm.prediction,"auc")@y.values[[1]]
+plot(Occupancy.svm.performance,xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)', main = 'ROC Curve SVM-1', col="green",lwd=2,type="l")
+```
+
+```{r SVM-2}
+Occupancy_subset.te=data.frame(x=Occupancy_Test2[,c(2,4,5,6)], y=as.factor(Occupancy_Test2[,7]))
+pred.te=predict(Occupancy.svm, newdata=Occupancy_subset.te,decision.values=TRUE)
+Occupancy.svm.probs<-attr(pred.te,"decision.values")
+table(pred.te, Occupancy_subset.te$y)
+Occupancy.svm.confusion <- confusionMatrix(Occupancy_subset.te$y, pred.te)
+Occupancy.svm.confusion
+Occupancy.svm.accuracy <- mean(pred.te == Occupancy_subset.te$y)
+Occupancy.svm.accuracy
+mean(pred.te != Occupancy_subset.te$y)
+Occupancy.svm.prediction<-prediction(Occupancy.svm.probs,Occupancy_subset.te$y)
+Occupancy.svm.performance<-performance(Occupancy.svm.prediction,"tpr","fpr")
+Occupancy.svm.auc<-performance(Occupancy.svm.prediction,"auc")@y.values[[1]]
+plot(Occupancy.svm.performance,xlab='False positive rate(1-specificity)', ylab='True positive rate(specificity)', main = 'ROC Curve SVM-2', col="green",lwd=2,type="l")
+```
